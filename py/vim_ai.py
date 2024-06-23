@@ -1,16 +1,14 @@
-import vim
 import datetime
 import glob
-import os
-import socket
-import re
-from urllib.error import URLError, HTTPError
-
-import sys
-import traceback
-
-import urllib.request
 import json
+import os
+import re
+import socket
+import traceback
+import urllib.request
+from urllib.error import HTTPError, URLError
+
+import vim
 
 
 class KnownError(Exception):
@@ -18,7 +16,6 @@ class KnownError(Exception):
 
 
 class Config:
-
     @property
     def is_debugging(self):
         return vim.eval("g:vim_ai_debug") == "1"
@@ -56,17 +53,19 @@ config = Config()
 def need_insert_before_cursor(is_selection):
     if not is_selection == False:
         return False
-    pos = vim.eval("getpos(\"'<\")[1:2]")
+    pos = vim.eval('getpos("\'<")[1:2]')
     if not isinstance(pos, list) or len(pos) != 2:
         raise ValueError(
-            "Unexpected getpos value, it should be a list with two elements")
-    return pos[
-        1] == "1"  # determines if visual selection starts on the first window column
+            "Unexpected getpos value, it should be a list with two elements"
+        )
+    return (
+        pos[1] == "1"
+    )  # determines if visual selection starts on the first window column
 
 
 def render_text_chunks(chunks, is_selection):
     generating_text = False
-    full_text = ''
+    full_text = ""
     insert_before_cursor = need_insert_before_cursor(is_selection)
     for text in chunks:
         if not text.strip() and not generating_text:
@@ -82,18 +81,18 @@ def render_text_chunks(chunks, is_selection):
         full_text += text
     if not full_text.strip():
         print_info_message(
-            'Empty response received. Tip: You can try modifying the prompt and retry.'
+            "Empty response received. Tip: You can try modifying the prompt and retry."
         )
 
 
 def parse_prompt_and_role(raw_prompt):
     prompt = raw_prompt.strip()
-    role = re.split(' |:', prompt)[0]
-    if not role.startswith('/'):
+    role = re.split(" |:", prompt)[0]
+    if not role.startswith("/"):
         # does not require role
         return (prompt, None)
 
-    prompt = prompt[len(role):].strip()
+    prompt = prompt[len(role) :].strip()
     role = role[1:]
     return (prompt, role)
 
@@ -134,7 +133,7 @@ def parse_chat_messages(chat_content, pwd=config.pwd):
 
                 paths[i] = path
 
-                if '**' in path:
+                if "**" in path:
                     paths[i] = None
                     paths.extend(glob.glob(path, recursive=True))
 
@@ -147,9 +146,7 @@ def parse_chat_messages(chat_content, pwd=config.pwd):
 
                 try:
                     with open(path, "r") as file:
-                        message[
-                            "content"] += f"\n\n==> {path} <==\n" + file.read(
-                            )
+                        message["content"] += f"\n\n==> {path} <==\n" + file.read()
                 except UnicodeDecodeError:
                     message["content"] += "\n\n" + f"==> {path} <=="
                     message["content"] += "\n" + "Binary file, cannot display"
@@ -182,16 +179,15 @@ def handle_completion_error(error):
     is_nvim_keyboard_interrupt = "Keyboard interrupt" in str(error)
     if isinstance(error, KeyboardInterrupt) or is_nvim_keyboard_interrupt:
         print_info_message("Completion cancelled...")
-    elif isinstance(error, URLError) and isinstance(error.reason,
-                                                    socket.timeout):
+    elif isinstance(error, URLError) and isinstance(error.reason, socket.timeout):
         print_info_message("Request timeout...")
     elif isinstance(error, HTTPError):
         status_code = error.getcode()
         msg = f"OpenAI: HTTPError {status_code}"
         if status_code == 401:
-            msg += ' (Hint: verify that your API key is valid)'
+            msg += " (Hint: verify that your API key is valid)"
         if status_code == 404:
-            msg += ' (Hint: verify that you have access to the OpenAI API and to the model)'
+            msg += " (Hint: verify that you have access to the OpenAI API and to the model)"
         elif status_code == 429:
             msg += ' (Hint: verify that your billing plan is "Pay as you go")'
         print_info_message(msg)
@@ -209,7 +205,7 @@ def clear_echo_message():
 
 def initialize_chat_window(prompt=None):
     lines = vim.eval('getline(1, "$")')
-    contains_user_prompt = '>>> user' in lines
+    contains_user_prompt = ">>> user" in lines
     if not contains_user_prompt:
         # user role not found, put whole file content as an user prompt
         vim.command("normal! gg")
@@ -231,9 +227,9 @@ def initialize_chat_window(prompt=None):
     vim.command("redraw")
 
     file_content = vim.eval('trim(join(getline(1, "$"), "\n"))')
-    role_lines = re.findall(r'(^>>> user|^>>> system|^<<< assistant).*',
-                            file_content,
-                            flags=re.MULTILINE)
+    role_lines = re.findall(
+        r"(^>>> user|^>>> system|^<<< assistant).*", file_content, flags=re.MULTILINE
+    )
     if not role_lines[-1].startswith(">>> user"):
         # last role is not user, most likely completion was cancelled before
         vim.command("normal! o")
@@ -246,14 +242,13 @@ def initialize_chat_window(prompt=None):
 
 
 class LolmaxBackend:
-
-    def __init__(self,
-                 root_url="http://localhost:8000",
-                 request_timeout=config.request_timeout):
+    def __init__(
+        self, root_url="http://localhost:8000", request_timeout=config.request_timeout
+    ):
         self.root_url = root_url
         self.request_timeout = request_timeout
 
-    def chat(self, messages, model='perplexity', effects=None):
+    def chat(self, messages, model="perplexity", effects=None):
         effects = effects or []
         url = os.path.join(self.root_url, "chat")
         headers = {
@@ -270,8 +265,7 @@ class LolmaxBackend:
             headers=headers,
             method="POST",
         )
-        with urllib.request.urlopen(req,
-                                    timeout=self.request_timeout) as response:
+        with urllib.request.urlopen(req, timeout=self.request_timeout) as response:
             for line_bytes in response:
                 line = line_bytes.decode("utf-8", errors="replace")
                 line_obj = json.loads(line)
@@ -281,7 +275,7 @@ class LolmaxBackend:
 # chat and completion are very similar now, but tantalizingly difficult to fully DRY up with
 # the interleavings of common and bespoke functionality. Leaving as-is for now, since
 # It's Fine (tm)
-def do_chat():
+def vim_ai_chat():
     prompt, role = parse_prompt_and_role(vim.eval("l:prompt"))
     initialize_chat_window()
     chat_content = vim.eval('trim(join(getline(1, "$"), "\n"))')
@@ -292,10 +286,9 @@ def do_chat():
             vim.command("normal! Go\n<<< assistant\n\n")
             vim.command("redraw")
 
-            print('Answering...')
+            print("Answering...")
             vim.command("redraw")
 
-            printDebug("[chat] Answering with args: {}", sys.argv)
             printDebug("[chat] messages: {}", messages)
             backend = LolmaxBackend()
             text_chunks = backend.chat(messages)
@@ -310,12 +303,12 @@ def do_chat():
         printDebug("[chat] error: {}", traceback.format_exc())
 
 
-def do_complete():
+def vim_ai_complete():
     prompt, role = parse_prompt_and_role(vim.eval("l:prompt"))
     messages = [{"role": "user", "content": prompt}]
     try:
         if messages[-1]["content"].strip():
-            print('Completing...')
+            print("Completing...")
             vim.command("redraw")
 
             backend = LolmaxBackend()

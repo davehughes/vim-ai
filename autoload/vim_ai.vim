@@ -1,8 +1,9 @@
 call vim_ai_config#load()
 
 let s:plugin_root = expand('<sfile>:p:h:h')
-let s:roles_py = s:plugin_root . "/py/roles.py"
-let s:vim_ai_py = s:plugin_root . "/py/utils.py"
+let s:vim_ai_py = s:plugin_root . "/py/vim_ai.py"
+let s:vim_ai_py_loaded = 0
+let s:vim_ai_py_cache = 0
 
 " remembers last command parameters to be used in AIRedoRun
 let s:last_is_selection = 0
@@ -117,6 +118,13 @@ function! s:GetVisualSelection()
   return join(lines, "\n")
 endfunction
 
+function! s:LoadPython()
+  if !s:vim_ai_py_cache || !s:vim_ai_py_loaded
+    execute "py3file " . s:vim_ai_py
+    let s:vim_ai_py_loaded = 1
+  endif
+endfunction
+
 " Complete prompt
 " - config       - function scoped vim_ai_complete config
 " - a:1          - optional instruction prompt
@@ -149,7 +157,9 @@ function! vim_ai#AIRun(config, ...) range
   else
     execute "normal! " . a:lastline . "Go"
   endif
-  execute "py3file " . s:vim_ai_py
+
+  call s:LoadPython()
+  execute "py3 vim_ai_complete()"
   execute "normal! " . a:lastline . "G"
 endfunction
 
@@ -180,7 +190,8 @@ function! vim_ai#AIEditRun(config, ...) range
   call s:set_paste(l:config)
   call s:SelectSelectionOrRange(l:is_selection, a:firstline, a:lastline)
   execute "normal! c"
-  execute "py3file " . s:vim_ai_py
+  call s:LoadPython()
+  execute "py3 vim_ai_complete()"
 endfunction
 
 function! s:ReuseOrCreateChatWindow(config)
@@ -246,9 +257,8 @@ function! vim_ai#AIChatRun(uses_range, config, ...) range
   let s:last_command = "chat"
   let s:last_config = a:config
 
-  execute "python3 import sys"
-  execute "python3 sys.argv = ['foo', 'bar']"
-  execute "py3file " . s:vim_ai_py
+  call s:LoadPython()
+  execute "py3 vim_ai_chat()"
 endfunction
 
 " Start a new chat
@@ -273,7 +283,8 @@ function! vim_ai#AIRedoRun()
 endfunction
 
 function! vim_ai#RoleCompletion(A,L,P) abort
-  execute "py3file " . s:roles_py
+  call s:LoadPython()
+  execute "py3 roles_completion()"
   call map(l:role_list, '"/" . v:val')
   return filter(l:role_list, 'v:val =~ "^' . a:A . '"')
 endfunction
