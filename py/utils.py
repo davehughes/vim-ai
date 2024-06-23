@@ -9,13 +9,34 @@ from urllib.error import URLError, HTTPError
 import sys
 import traceback
 
-import urllib
+import urllib.request
 import json
 
 
 class KnownError(Exception):
     pass
 
+
+class Config:
+
+    @property
+    def is_debugging(self):
+        return vim.eval("g:vim_ai_debug") == "1"
+
+    @property
+    def debug_log_file(self):
+        return vim.eval("g:vim_ai_debug_log_file")
+
+    @property
+    def pwd(self):
+        return vim.eval("getcwd()")
+
+    @property
+    def request_timeout(self):
+        return 30
+
+
+config = Config()
 
 # During text manipulation in Vim's visual mode, we utilize "normal! c" command. This command deletes the highlighted text,
 # immediately followed by entering insert mode where it generates desirable text.
@@ -224,28 +245,6 @@ def initialize_chat_window(prompt=None):
         vim.command("redraw")
 
 
-class Config:
-
-    @property
-    def is_debugging(self):
-        return vim.eval("g:vim_ai_debug") == "1"
-
-    @property
-    def debug_log_file(self):
-        return vim.eval("g:vim_ai_debug_log_file")
-
-    @property
-    def pwd(self):
-        return vim.eval("getcwd()")
-
-    @property
-    def request_timeout(self):
-        return 30
-
-
-config = Config()
-
-
 class LolmaxBackend:
 
     def __init__(self,
@@ -293,7 +292,7 @@ def do_chat():
             vim.command("normal! Go\n<<< assistant\n\n")
             vim.command("redraw")
 
-            print(f'Answering...')
+            print('Answering...')
             vim.command("redraw")
 
             printDebug("[chat] Answering with args: {}", sys.argv)

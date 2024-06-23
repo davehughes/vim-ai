@@ -1,9 +1,8 @@
 call vim_ai_config#load()
 
 let s:plugin_root = expand('<sfile>:p:h:h')
-let s:complete_py = s:plugin_root . "/py/complete.py"
-let s:chat_py = s:plugin_root . "/py/chat.py"
 let s:roles_py = s:plugin_root . "/py/roles.py"
+let s:vim_ai_py = s:plugin_root . "/py/utils.py"
 
 " remembers last command parameters to be used in AIRedoRun
 let s:last_is_selection = 0
@@ -150,7 +149,7 @@ function! vim_ai#AIRun(config, ...) range
   else
     execute "normal! " . a:lastline . "Go"
   endif
-  execute "py3file " . s:complete_py
+  execute "py3file " . s:vim_ai_py
   execute "normal! " . a:lastline . "G"
 endfunction
 
@@ -181,7 +180,7 @@ function! vim_ai#AIEditRun(config, ...) range
   call s:set_paste(l:config)
   call s:SelectSelectionOrRange(l:is_selection, a:firstline, a:lastline)
   execute "normal! c"
-  execute "py3file " . s:complete_py
+  execute "py3file " . s:vim_ai_py
 endfunction
 
 function! s:ReuseOrCreateChatWindow(config)
@@ -247,7 +246,9 @@ function! vim_ai#AIChatRun(uses_range, config, ...) range
   let s:last_command = "chat"
   let s:last_config = a:config
 
-  execute "py3file " . s:chat_py
+  execute "python3 import sys"
+  execute "python3 sys.argv = ['foo', 'bar']"
+  execute "py3file " . s:vim_ai_py
 endfunction
 
 " Start a new chat
