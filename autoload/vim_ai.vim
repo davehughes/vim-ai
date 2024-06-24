@@ -159,7 +159,7 @@ function! vim_ai#AIRun(config, ...) range
   endif
 
   call s:LoadPython()
-  execute "py3 vim_ai_complete()"
+  execute "py3 VimAI.complete()"
   execute "normal! " . a:lastline . "G"
 endfunction
 
@@ -191,7 +191,7 @@ function! vim_ai#AIEditRun(config, ...) range
   call s:SelectSelectionOrRange(l:is_selection, a:firstline, a:lastline)
   execute "normal! c"
   call s:LoadPython()
-  execute "py3 vim_ai_complete()"
+  execute "py3 VimAI.complete()"
 endfunction
 
 function! s:ReuseOrCreateChatWindow(config)
@@ -258,7 +258,7 @@ function! vim_ai#AIChatRun(uses_range, config, ...) range
   let s:last_config = a:config
 
   call s:LoadPython()
-  execute "py3 vim_ai_chat()"
+  execute "py3 VimAI.chat()"
 endfunction
 
 " Start a new chat
@@ -284,7 +284,15 @@ endfunction
 
 function! vim_ai#RoleCompletion(A,L,P) abort
   call s:LoadPython()
-  execute "py3 roles_completion()"
+  execute "py3 VimAI.roles_completion()"
   call map(l:role_list, '"/" . v:val')
   return filter(l:role_list, 'v:val =~ "^' . a:A . '"')
+endfunction
+
+function! vim_ai#SetCurrentModel(model)
+  let g:vim_ai_model = a:model
+endfunction
+
+function! vim_ai#SetCurrentEffects(effects)
+  let g:vim_ai_effects = a:effects
 endfunction

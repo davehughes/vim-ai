@@ -11,10 +11,6 @@ from urllib.error import HTTPError, URLError
 import vim
 
 
-class KnownError(Exception):
-    pass
-
-
 class Config:
     @property
     def is_debugging(self):
@@ -31,6 +27,19 @@ class Config:
     @property
     def request_timeout(self):
         return 30
+
+    @property
+    def api_root(self):
+        return vim.eval('get(g:, "vim_ai_api_root", "http://localhost:8000")')
+
+    @property
+    def current_model(self):
+        return vim.eval('get(g:, "vim_ai_model", "default")')
+
+    @property
+    def current_effects(self):
+        effects_str = vim.eval('get(g:, "vim_ai_effects", "")')
+        return [e for e in effects_str.split(",") if len(e) > 0]
 
 
 config = Config()
@@ -191,8 +200,6 @@ def handle_completion_error(error):
         elif status_code == 429:
             msg += ' (Hint: verify that your billing plan is "Pay as you go")'
         print_info_message(msg)
-    elif isinstance(error, KnownError):
-        print_info_message(str(error))
     else:
         raise error
 
@@ -243,14 +250,14 @@ def initialize_chat_window(prompt=None):
 
 class LolmaxBackend:
     def __init__(
-        self, root_url="http://localhost:8000", request_timeout=config.request_timeout
+        self, api_root=config.api_root, request_timeout=config.request_timeout
     ):
-        self.root_url = root_url
+        self.api_root = api_root
         self.request_timeout = request_timeout
 
-    def chat(self, messages, model="perplexity", effects=None):
+    def chat(self, messages, model="default", effects=None):
         effects = effects or []
-        url = os.path.join(self.root_url, "chat")
+        url = os.path.join(self.api_root, "chat")
         headers = {
             "Content-Type": "application/json",
         }
@@ -271,52 +278,82 @@ class LolmaxBackend:
                 line_obj = json.loads(line)
                 yield line_obj["content"]
 
+    def list_models(self):
+        url = os.path.join(self.api_root, "info")
+        headers = {"Content-Type": "application/json"}
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        res = urllib.request.urlopen(req, timeout=self.request_timeout)
+        return json.loads(res.read().decode("utf-8")["models"])
 
-# chat and completion are very similar now, but tantalizingly difficult to fully DRY up with
-# the interleavings of common and bespoke functionality. Leaving as-is for now, since
-# It's Fine (tm)
-def vim_ai_chat():
-    prompt, role = parse_prompt_and_role(vim.eval("l:prompt"))
-    initialize_chat_window()
-    chat_content = vim.eval('trim(join(getline(1, "$"), "\n"))')
-    messages = parse_chat_messages(chat_content)
-
-    try:
-        if messages[-1]["content"].strip():
-            vim.command("normal! Go\n<<< assistant\n\n")
-            vim.command("redraw")
-
-            print("Answering...")
-            vim.command("redraw")
-
-            printDebug("[chat] messages: {}", messages)
-            backend = LolmaxBackend()
-            text_chunks = backend.chat(messages)
-            is_selection = vim.eval("l:is_selection")
-            render_text_chunks(text_chunks, is_selection)
-
-            vim.command("normal! a\n\n>>> user\n\n")
-            vim.command("redraw")
-            clear_echo_message()
-    except BaseException as error:
-        handle_completion_error(error)
-        printDebug("[chat] error: {}", traceback.format_exc())
+    def list_effects(self):
+        url = os.path.join(self.api_root, "info")
+        headers = {"Content-Type": "application/json"}
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        res = urllib.request.urlopen(req, timeout=self.request_timeout)
+        return json.loads(res.read().decode("utf-8")["effects"])
 
 
-def vim_ai_complete():
-    prompt, role = parse_prompt_and_role(vim.eval("l:prompt"))
-    messages = [{"role": "user", "content": prompt}]
-    try:
-        if messages[-1]["content"].strip():
-            print("Completing...")
-            vim.command("redraw")
+class VimAI:
+    @staticmethod
+    def list_models():
+        backend = LolmaxBackend()
+        backend.list_models()
 
-            backend = LolmaxBackend()
-            text_chunks = backend.chat(messages)
-            is_selection = vim.eval("l:is_selection")
-            render_text_chunks(text_chunks, is_selection)
+    @staticmethod
+    def list_effects():
+        backend = LolmaxBackend()
+        backend.list_effects()
 
-            clear_echo_message()
-    except BaseException as error:
-        handle_completion_error(error)
-        printDebug("[complete] error: {}", traceback.format_exc())
+    # chat and completion are very similar now, but tantalizingly difficult to fully DRY up with
+    # the interleavings of common and bespoke functionality. Leaving as-is for now, since
+    # It's Fine (tm)
+    @staticmethod
+    def chat():
+        prompt, role = parse_prompt_and_role(vim.eval("l:prompt"))
+        initialize_chat_window()
+        chat_content = vim.eval('trim(join(getline(1, "$"), "\n"))')
+        messages = parse_chat_messages(chat_content)
+
+        try:
+            if messages[-1]["content"].strip():
+                vim.command("normal! Go\n<<< assistant\n\n")
+                vim.command("redraw")
+
+                print("Answering...")
+                vim.command("redraw")
+
+                printDebug("[chat] messages: {}", messages)
+                backend = LolmaxBackend()
+                text_chunks = backend.chat(
+                    messages, model=config.current_model, effects=config.current_effects
+                )
+                is_selection = vim.eval("l:is_selection")
+                render_text_chunks(text_chunks, is_selection)
+
+                vim.command("normal! a\n\n>>> user\n\n")
+                vim.command("redraw")
+                clear_echo_message()
+        except BaseException as error:
+            handle_completion_error(error)
+            printDebug("[chat] error: {}", traceback.format_exc())
+
+    @staticmethod
+    def complete():
+        prompt, role = parse_prompt_and_role(vim.eval("l:prompt"))
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            if messages[-1]["content"].strip():
+                print("Completing...")
+                vim.command("redraw")
+
+                backend = LolmaxBackend()
+                text_chunks = backend.chat(
+                    messages, model=config.current_model, effects=config.current_effects
+                )
+                is_selection = vim.eval("l:is_selection")
+                render_text_chunks(text_chunks, is_selection)
+
+                clear_echo_message()
+        except BaseException as error:
+            handle_completion_error(error)
+            printDebug("[complete] error: {}", traceback.format_exc())
